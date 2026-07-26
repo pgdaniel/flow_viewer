@@ -5,8 +5,9 @@ any [ruby_zmq_framework](https://github.com/pgdaniel/ruby_zmq_framework)-family
 port** — [Ruby](https://github.com/pgdaniel/ruby_zmq_framework),
 [Zig](https://github.com/pgdaniel/zig_zmq_framework),
 [Go](https://github.com/pgdaniel/go_zmq_framework),
-[Rust](https://github.com/pgdaniel/rust_zmq_framework), or
-[Node](https://github.com/pgdaniel/node_zmq_framework). Every one of those
+[Rust](https://github.com/pgdaniel/rust_zmq_framework),
+[Node](https://github.com/pgdaniel/node_zmq_framework), or
+[C++](https://github.com/pgdaniel/cpp_zmq_framework). Every one of those
 ports parses the same manifest format and can emit the same topology JSON
 (`flowctl --graph`), so this viewer doesn't care which language your
 flow.yml is written for — it just draws the graph.
