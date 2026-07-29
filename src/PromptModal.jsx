@@ -5,7 +5,17 @@ import { useEscapeToClose } from './useEscapeToClose.js'
 // caller-supplied validator, so invalid input is shown inline instead of
 // being silently swallowed (the old addNode() did nothing at all on a
 // bad/duplicate name).
-export function PromptModal({ title, label, placeholder, initialValue = '', confirmLabel = 'Add', validate, onConfirm, onCancel }) {
+export function PromptModal({
+  title,
+  label,
+  placeholder,
+  initialValue = '',
+  confirmLabel = 'Add',
+  validate,
+  onConfirm,
+  onCancel,
+  children,
+}) {
   const [value, setValue] = useState(initialValue)
   const [error, setError] = useState(null)
 
@@ -38,6 +48,7 @@ export function PromptModal({ title, label, placeholder, initialValue = '', conf
           onKeyDown={(e) => e.key === 'Enter' && commit()}
         />
         {error && <p className="modal__error">{error}</p>}
+        {children}
         <div className="modal__actions">
           <button type="button" onClick={onCancel}>
             Cancel

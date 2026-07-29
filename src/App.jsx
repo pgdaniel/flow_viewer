@@ -55,6 +55,45 @@ function saveCachedPositions(positions) {
   }
 }
 
+function mapGraphToNodes(graph) {
+  return graph.nodes.map((n) => ({
+    name: n.name,
+    cmd: n.cmd,
+    publishes: [...n.publishes],
+    subscribes: [...n.subscribes],
+    env: { ...n.env },
+  }))
+}
+
+// A small "recently opened" list, keyed by the same ?flow= value used to
+// fetch flow.json — lets a user get back to a flow source they had open
+// before, the same way an editor remembers recent projects. Only fetched
+// sources are recorded (an uploaded file has no URL to reopen).
+const RECENT_SOURCES_KEY = 'zmq-viewer:recentFlowSources'
+const MAX_RECENT_SOURCES = 5
+
+function loadRecentFlowSources() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_SOURCES_KEY))
+    return Array.isArray(raw) ? raw : []
+  } catch {
+    return []
+  }
+}
+
+function recordRecentFlowSource(source) {
+  try {
+    const rest = loadRecentFlowSources().filter((s) => s !== source)
+    localStorage.setItem(RECENT_SOURCES_KEY, JSON.stringify([source, ...rest].slice(0, MAX_RECENT_SOURCES)))
+  } catch {
+    // localStorage unavailable — recent list just won't persist.
+  }
+}
+
+function hrefForSource(source) {
+  return source === '/flow.json' ? window.location.pathname : `${window.location.pathname}?flow=${encodeURIComponent(source)}`
+}
+
 export default function App() {
   const {
     value: flowNodes,
@@ -81,40 +120,62 @@ export default function App() {
   // equality works here because useHistoryState never mutates in place.
   const [cleanCheckpoint, setCleanCheckpoint] = useState(null)
   const dirty = flowNodes !== null && flowNodes !== cleanCheckpoint
+  const [recentSources] = useState(() => loadRecentFlowSources().filter((s) => s !== flowSource))
 
   const positionsRef = useRef(loadCachedPositions())
   const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState([])
   const [rfEdges, setRfEdges] = useEdgesState([])
 
   useEffect(() => {
-    fetch('/flow.json')
+    fetch(flowSource)
       .then((res) => {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
         return res.json()
       })
       .then((graph) => {
         if (!isValidFlowJson(graph)) {
-          throw new Error('flow.json is not shaped like a flow graph (expected { nodes: [...] })')
+          throw new Error(`${flowSource} is not shaped like a flow graph (expected { nodes: [...] })`)
         }
-        const nodes = graph.nodes.map((n) => ({
-          name: n.name,
-          cmd: n.cmd,
-          publishes: [...n.publishes],
-          subscribes: [...n.subscribes],
-          env: { ...n.env },
-        }))
+        const nodes = mapGraphToNodes(graph)
         replaceWithoutHistory(nodes)
         setCleanCheckpoint(nodes)
+        recordRecentFlowSource(flowSource)
       })
       .catch((err) =>
         setError(
-          `Could not load flow.json (${err.message}). Run "npm run sync" to generate it from flow.yml.`,
+          `Could not load ${flowSource} (${err.message}). Run "npm run sync" to generate it from flow.yml, or load a file below.`,
         ),
       )
     // replaceWithoutHistory is a stable useCallback identity; omitted to
     // keep this a true "run once on mount" effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Fallback for a statically-hosted build with no server-side flow.json
+  // and no ?flow= override: let the user hand the app a file directly,
+  // no rebuild required.
+  const loadFromFile = useCallback(
+    (file) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        try {
+          const graph = JSON.parse(reader.result)
+          if (!isValidFlowJson(graph)) {
+            throw new Error('not shaped like a flow graph (expected { nodes: [...] })')
+          }
+          const nodes = mapGraphToNodes(graph)
+          replaceWithoutHistory(nodes)
+          setCleanCheckpoint(nodes)
+          setError(null)
+        } catch (err) {
+          setError(`Could not read that file (${err.message}).`)
+        }
+      }
+      reader.onerror = () => setError('Could not read that file.')
+      reader.readAsText(file)
+    },
+    [replaceWithoutHistory],
+  )
 
   // Warn before an unsaved edit is silently discarded by a close/refresh.
   useEffect(() => {
@@ -380,8 +441,36 @@ export default function App() {
     setSettingsOpen(false)
   }, [])
 
-  if (error) return <div className="status status--error">{error}</div>
-  if (!flowNodes) return <div className="status">Loading flow.yml…</div>
+  if (error) {
+    return (
+      <div className="status status--error">
+        <div className="status__content">
+          <p>{error}</p>
+          <label className="status__upload">
+            Load a flow.json file:
+            <input
+              type="file"
+              accept="application/json,.json"
+              onChange={(e) => e.target.files[0] && loadFromFile(e.target.files[0])}
+            />
+          </label>
+          {recentSources.length > 0 && (
+            <div className="status__recent">
+              <p>Or open a recent flow:</p>
+              <ul>
+                {recentSources.map((src) => (
+                  <li key={src}>
+                    <a href={hrefForSource(src)}>{src}</a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+  if (!flowNodes) return <div className="status">Loading {flowSource}…</div>
 
   return (
     <div className="app">
@@ -575,7 +664,20 @@ export default function App() {
             }}
             onConfirm={confirmSettings}
             onCancel={() => setSettingsOpen(false)}
-          />
+          >
+            {recentSources.length > 0 && (
+              <div className="modal__recent">
+                <p className="modal__hint">Switch to a recent flow:</p>
+                <ul>
+                  {recentSources.map((src) => (
+                    <li key={src}>
+                      <a href={hrefForSource(src)}>{src}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </PromptModal>
         )}
       </div>
     </div>
