@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "license": "MIT",
-  "description": "A Node-RED-style graph viewer/editor for flow.yml manifests from any ruby_zmq_framework-family port (Ruby, Zig, Go, Rust, Node)",
+  "description": "A Node-RED-style graph viewer/editor for flow.yml manifests from any ruby_zmq_framework-family port (Ruby, Zig, Go, Rust, Node, C++, Python)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
