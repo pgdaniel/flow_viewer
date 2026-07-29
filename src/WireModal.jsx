@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { isValidToken } from './graphModel.js'
+import { useEscapeToClose } from './useEscapeToClose.js'
 
 // Shown when the user drags a wire between two nodes. Edges in this
 // system aren't literal point-to-point connections — they're *derived*
@@ -11,6 +12,8 @@ export function WireModal({ sourceName, targetName, sourcePublishes, onConfirm, 
   const [topic, setTopic] = useState(sourcePublishes[0] ?? '')
   const trimmed = topic.trim()
   const invalid = trimmed !== '' && !isValidToken(trimmed)
+
+  useEscapeToClose(onCancel)
 
   const confirm = () => {
     if (trimmed && !invalid) onConfirm(trimmed)
