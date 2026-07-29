@@ -13,7 +13,13 @@ import { useHistoryState } from './useHistoryState.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 
-const POSITIONS_KEY = 'zmq-viewer:positions'
+// Same ?flow= convention a later runtime-configurable flow.json source
+// will use for the fetch itself — reading it here too means the position
+// cache is already namespaced per flow before that lands, so two
+// different flow.yml files (likely sharing common node names) never
+// collide on a single global cache key.
+const flowSource = new URLSearchParams(window.location.search).get('flow') ?? '/flow.json'
+const POSITIONS_KEY = `zmq-viewer:positions:${flowSource}`
 const EDIT_SERVER_URL = 'http://localhost:4568'
 
 function loadCachedPositions() {
