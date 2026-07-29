@@ -139,6 +139,25 @@ export function validateFlow(nodes) {
   return issues
 }
 
+/// Guards the shape of a freshly-fetched/uploaded flow.json before it
+/// ever reaches deriveGraph/layoutGraph, which trust n.name/n.cmd/
+/// n.publishes/n.subscribes/n.env completely and would otherwise throw
+/// deep inside a render rather than failing with a useful message.
+export function isValidFlowJson(graph) {
+  if (!graph || !Array.isArray(graph.nodes)) return false
+  return graph.nodes.every(
+    (n) =>
+      n &&
+      typeof n.name === 'string' &&
+      typeof n.cmd === 'string' &&
+      Array.isArray(n.publishes) &&
+      Array.isArray(n.subscribes) &&
+      typeof n.env === 'object' &&
+      n.env !== null &&
+      !Array.isArray(n.env),
+  )
+}
+
 /// A fresh, empty node for the "Add Node" toolbar action.
 export function blankNode(name) {
   return { name, cmd: '', publishes: [], subscribes: [], env: {} }

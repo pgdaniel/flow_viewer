@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow } from './graphModel.js'
+import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow, isValidFlowJson } from './graphModel.js'
 
 const FLOW = [
   { name: 'ecu', cmd: 'ruby nodes/ecu.rb', publishes: ['engine_data'], subscribes: ['throttle_request'], env: {} },
@@ -166,6 +166,30 @@ describe('validateFlow', () => {
     const issues = validateFlow(nodes)
     expect(issues.some((i) => i.field === 'publishes')).toBe(true)
     expect(issues.some((i) => i.field === 'subscribes')).toBe(true)
+  })
+})
+
+describe('isValidFlowJson', () => {
+  it('accepts a well-shaped graph', () => {
+    expect(isValidFlowJson({ nodes: FLOW })).toBe(true)
+  })
+
+  it('accepts a graph with zero nodes', () => {
+    expect(isValidFlowJson({ nodes: [] })).toBe(true)
+  })
+
+  it('rejects a missing or non-array nodes field', () => {
+    expect(isValidFlowJson({})).toBe(false)
+    expect(isValidFlowJson({ nodes: 'nope' })).toBe(false)
+    expect(isValidFlowJson(null)).toBe(false)
+  })
+
+  it('rejects a node missing a required field', () => {
+    expect(isValidFlowJson({ nodes: [{ name: 'n', cmd: 'x', publishes: [], subscribes: [] }] })).toBe(false)
+  })
+
+  it('rejects a node whose env is an array instead of an object', () => {
+    expect(isValidFlowJson({ nodes: [{ name: 'n', cmd: 'x', publishes: [], subscribes: [], env: [] }] })).toBe(false)
   })
 })
 

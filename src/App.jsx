@@ -6,7 +6,7 @@ import { layoutGraph, topicColor } from './layout.js'
 import { ModuleNode, UnresolvedNode } from './ModuleNode.jsx'
 import { EditPanel } from './EditPanel.jsx'
 import { WireModal } from './WireModal.jsx'
-import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow } from './graphModel.js'
+import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow, isValidFlowJson } from './graphModel.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 
@@ -49,7 +49,10 @@ export default function App() {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
         return res.json()
       })
-      .then((graph) =>
+      .then((graph) => {
+        if (!isValidFlowJson(graph)) {
+          throw new Error('flow.json is not shaped like a flow graph (expected { nodes: [...] })')
+        }
         setFlowNodes(
           graph.nodes.map((n) => ({
             name: n.name,
@@ -58,8 +61,8 @@ export default function App() {
             subscribes: [...n.subscribes],
             env: { ...n.env },
           })),
-        ),
-      )
+        )
+      })
       .catch((err) =>
         setError(
           `Could not load flow.json (${err.message}). Run "npm run sync" to generate it from flow.yml.`,
