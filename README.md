@@ -94,9 +94,12 @@ for node_zmq_framework directly.
 ```bash
 npm run lint    # oxlint
 npm run build   # production build to dist/
+npm test        # vitest run
 ```
 
-No test suite yet — the logic worth testing (`deriveGraph`, `toYamlText`)
-is a deliberate mirror of node_zmq_framework's already-tested
-`lib/flow.js`; see that repo's `lib/flow.test.js` for the coverage this
-shares.
+`src/graphModel.test.js` covers `deriveGraph`/`allTopics`/`toYamlText`/
+`quoteIfNeeded`/`isValidToken`/`validateFlow` directly.
+`src/graphModel.integration.test.js` is a drift detector for the mirror
+described above: when a `node_zmq_framework` clone is present as a
+sibling directory it feeds identical input through both implementations
+and asserts identical output, and skips cleanly otherwise.
