@@ -34,6 +34,15 @@
   border-color: var(--accent-border);
 }
 
+.app__toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.app__toolbar button:disabled:hover {
+  border-color: var(--border);
+}
+
 .app__edit-toggle.active {
   background: var(--accent-bg);
   border-color: var(--accent-border);

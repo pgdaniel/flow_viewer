@@ -9,6 +9,7 @@ import { WireModal } from './WireModal.jsx'
 import { ConfirmModal } from './ConfirmModal.jsx'
 import { PromptModal } from './PromptModal.jsx'
 import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow, isValidFlowJson } from './graphModel.js'
+import { useHistoryState } from './useHistoryState.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 
@@ -33,7 +34,15 @@ function saveCachedPositions(positions) {
 }
 
 export default function App() {
-  const [flowNodes, setFlowNodes] = useState(null)
+  const {
+    value: flowNodes,
+    set: setFlowNodes,
+    replaceWithoutHistory,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useHistoryState(null)
   const [error, setError] = useState(null)
   const [editMode, setEditMode] = useState(false)
   const [selectedName, setSelectedName] = useState(null)
@@ -57,7 +66,7 @@ export default function App() {
         if (!isValidFlowJson(graph)) {
           throw new Error('flow.json is not shaped like a flow graph (expected { nodes: [...] })')
         }
-        setFlowNodes(
+        replaceWithoutHistory(
           graph.nodes.map((n) => ({
             name: n.name,
             cmd: n.cmd,
@@ -72,6 +81,9 @@ export default function App() {
           `Could not load flow.json (${err.message}). Run "npm run sync" to generate it from flow.yml.`,
         ),
       )
+    // replaceWithoutHistory is a stable useCallback identity; omitted to
+    // keep this a true "run once on mount" effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const liveGraph = useMemo(() => (flowNodes ? deriveGraph(flowNodes) : null), [flowNodes])
@@ -167,6 +179,22 @@ export default function App() {
     [onRfNodesChange],
   )
 
+  // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z for undo/redo, skipped while typing in a
+  // field (so it doesn't fight native input undo) and only while editing.
+  useEffect(() => {
+    if (!editMode) return
+    const handler = (e) => {
+      const tag = document.activeElement?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [editMode, undo, redo])
+
   const displayEdges = useMemo(
     () => rfEdges.map((e) => (e.id === hoveredEdgeId ? { ...e, label: e.data.topic } : e)),
     [rfEdges, hoveredEdgeId],
@@ -187,7 +215,7 @@ export default function App() {
   const updateNode = useCallback((updated) => {
     setFlowNodes((prev) => prev.map((n) => (n.name === selectedName ? updated : n)))
     setSelectedName(updated.name)
-  }, [selectedName])
+  }, [selectedName, setFlowNodes])
 
   const deleteNode = useCallback((name) => {
     setConfirmAction({
@@ -201,7 +229,7 @@ export default function App() {
         setConfirmAction(null)
       },
     })
-  }, [])
+  }, [setFlowNodes])
 
   const addNode = useCallback(() => setAddNodeOpen(true), [])
 
@@ -218,14 +246,15 @@ export default function App() {
     setFlowNodes((prev) => [...prev, blankNode(trimmed)])
     setSelectedName(trimmed)
     setAddNodeOpen(false)
-  }, [])
+  }, [setFlowNodes])
 
   const resetLayout = useCallback(() => {
     positionsRef.current = {}
     saveCachedPositions({})
     // Force the reconciliation effect to treat everything as missing again.
-    setFlowNodes((prev) => [...prev])
-  }, [])
+    // Not a content edit, so it shouldn't be undoable.
+    replaceWithoutHistory((prev) => [...prev])
+  }, [replaceWithoutHistory])
 
   const onConnect = useCallback(
     (connection) => {
@@ -248,7 +277,7 @@ export default function App() {
       )
       setPendingConnection(null)
     },
-    [pendingConnection],
+    [pendingConnection, setFlowNodes],
   )
 
   const onEdgeClick = useCallback(
@@ -266,7 +295,7 @@ export default function App() {
         },
       })
     },
-    [editMode],
+    [editMode, setFlowNodes],
   )
 
   const save = useCallback(async () => {
@@ -313,6 +342,12 @@ export default function App() {
           {editMode && (
             <>
               <button onClick={addNode}>+ Add Node</button>
+              <button onClick={undo} disabled={!canUndo} title="Undo (Ctrl/Cmd+Z)">
+                Undo
+              </button>
+              <button onClick={redo} disabled={!canRedo} title="Redo (Ctrl/Cmd+Shift+Z)">
+                Redo
+              </button>
               <button onClick={resetLayout}>Auto Layout</button>
               <button className="app__save" onClick={save}>
                 Save flow.yml
