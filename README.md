@@ -44,6 +44,16 @@ git clone https://github.com/pgdaniel/node_zmq_framework ../node_zmq_framework
 (You don't need Node installed for whatever language your actual flow.yml
 targets — just for this viewer and its sync/edit tooling.)
 
+If your checkout doesn't live at `../node_zmq_framework`, point
+`FLOW_MODULE_PATH` at wherever `lib/flow.js` actually is instead of
+cloning it into that exact spot:
+
+```bash
+FLOW_MODULE_PATH=/path/to/node_zmq_framework/lib/flow.js npm run sync -- /path/to/some/flow.yml
+```
+
+(`npm run edit-server`, below, honors the same variable.)
+
 ## Editing and saving
 
 Click **Edit** in the toolbar to turn on dragging, the node/wire editing

@@ -17,19 +17,23 @@
 // `npm run build`.
 import { createServer } from 'node:http'
 import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const flowModulePath = path.join(here, '../../node_zmq_framework/lib/flow.js')
+// FLOW_MODULE_PATH overrides the default sibling-clone assumption, for
+// anyone whose node_zmq_framework checkout doesn't live at ../node_zmq_framework.
+const flowModulePath = process.env.FLOW_MODULE_PATH ?? path.join(here, '../../node_zmq_framework/lib/flow.js')
 
 let Flow
 try {
-  ;({ Flow } = await import(flowModulePath))
+  ;({ Flow } = await import(pathToFileURL(path.resolve(flowModulePath)).href))
 } catch (err) {
   console.error(`[flow-edit-server] Couldn't load node_zmq_framework's Flow module from ${flowModulePath}`)
   console.error('[flow-edit-server] Clone it as a sibling of this repo to use this server:')
   console.error('[flow-edit-server]   git clone https://github.com/pgdaniel/node_zmq_framework ../node_zmq_framework')
+  console.error('[flow-edit-server] ...or point FLOW_MODULE_PATH at wherever your checkout lives:')
+  console.error('[flow-edit-server]   FLOW_MODULE_PATH=/path/to/node_zmq_framework/lib/flow.js npm run edit-server -- flow.yml')
   console.error(`[flow-edit-server] (${err.message})`)
   process.exit(1)
 }

@@ -10,19 +10,23 @@
 //
 //   npm run sync -- /path/to/some/flow.yml
 import { writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
-const flowModulePath = path.join(here, '../../node_zmq_framework/lib/flow.js')
+// FLOW_MODULE_PATH overrides the default sibling-clone assumption, for
+// anyone whose node_zmq_framework checkout doesn't live at ../node_zmq_framework.
+const flowModulePath = process.env.FLOW_MODULE_PATH ?? path.join(here, '../../node_zmq_framework/lib/flow.js')
 
 let Flow
 try {
-  ;({ Flow } = await import(flowModulePath))
+  ;({ Flow } = await import(pathToFileURL(path.resolve(flowModulePath)).href))
 } catch (err) {
   console.error(`[sync] Couldn't load node_zmq_framework's Flow module from ${flowModulePath}`)
   console.error('[sync] Clone it as a sibling of this repo to use this script:')
   console.error('[sync]   git clone https://github.com/pgdaniel/node_zmq_framework ../node_zmq_framework')
+  console.error('[sync] ...or point FLOW_MODULE_PATH at wherever your checkout lives:')
+  console.error('[sync]   FLOW_MODULE_PATH=/path/to/node_zmq_framework/lib/flow.js npm run sync -- flow.yml')
   console.error(`[sync] (${err.message})`)
   process.exit(1)
 }
