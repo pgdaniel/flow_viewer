@@ -102,4 +102,12 @@ npm test        # vitest run
 `src/graphModel.integration.test.js` is a drift detector for the mirror
 described above: when a `node_zmq_framework` clone is present as a
 sibling directory it feeds identical input through both implementations
+
+`npm run build` always runs a `postbuild` step
+(`scripts/strip-dev-flow-json.mjs`) that deletes `dist/flow.json` —
+whatever sample `public/flow.json` a developer last synced locally would
+otherwise ship baked into the build. At runtime the app loads flow data
+from a `?flow=` query param (defaulting to `/flow.json`), or a file you
+hand it directly if that fails to load, so a deployed build was never
+meant to bundle one fixed flow.json anyway.
 and asserts identical output, and skips cleanly otherwise.
