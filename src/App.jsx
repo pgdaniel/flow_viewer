@@ -51,6 +51,12 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
+  // The last flowNodes reference known to be written to flow.yml (set on
+  // load and after a successful save-to-disk — NOT after the clipboard
+  // fallback, since that hasn't actually persisted anything). Reference
+  // equality works here because useHistoryState never mutates in place.
+  const [cleanCheckpoint, setCleanCheckpoint] = useState(null)
+  const dirty = flowNodes !== null && flowNodes !== cleanCheckpoint
 
   const positionsRef = useRef(loadCachedPositions())
   const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState([])
@@ -66,15 +72,15 @@ export default function App() {
         if (!isValidFlowJson(graph)) {
           throw new Error('flow.json is not shaped like a flow graph (expected { nodes: [...] })')
         }
-        replaceWithoutHistory(
-          graph.nodes.map((n) => ({
-            name: n.name,
-            cmd: n.cmd,
-            publishes: [...n.publishes],
-            subscribes: [...n.subscribes],
-            env: { ...n.env },
-          })),
-        )
+        const nodes = graph.nodes.map((n) => ({
+          name: n.name,
+          cmd: n.cmd,
+          publishes: [...n.publishes],
+          subscribes: [...n.subscribes],
+          env: { ...n.env },
+        }))
+        replaceWithoutHistory(nodes)
+        setCleanCheckpoint(nodes)
       })
       .catch((err) =>
         setError(
@@ -85,6 +91,17 @@ export default function App() {
     // keep this a true "run once on mount" effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Warn before an unsaved edit is silently discarded by a close/refresh.
+  useEffect(() => {
+    if (!dirty) return
+    const handler = (e) => {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
 
   const liveGraph = useMemo(() => (flowNodes ? deriveGraph(flowNodes) : null), [flowNodes])
   const topics = useMemo(() => (flowNodes ? allTopics(flowNodes) : []), [flowNodes])
@@ -315,6 +332,7 @@ export default function App() {
       })
       if (!res.ok) throw new Error(await res.text())
       setSaveStatus('Saved to flow.yml ✓')
+      setCleanCheckpoint(flowNodes)
     } catch {
       try {
         await navigator.clipboard.writeText(toYamlText(flowNodes))
@@ -360,6 +378,7 @@ export default function App() {
         </div>
       </header>
       {saveStatus && <div className="save-status">{saveStatus}</div>}
+      {!saveStatus && dirty && <div className="save-status save-status--dirty">Unsaved changes</div>}
       <div className="app__body">
         <ReactFlow
           nodes={rfNodes}
