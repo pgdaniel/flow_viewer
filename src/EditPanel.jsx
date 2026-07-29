@@ -52,40 +52,55 @@ function TopicChips({ label, topics, suggestions, onAdd, onRemove }) {
   )
 }
 
+// Kept as local state (synced from `env` only when the component mounts —
+// EditPanel is remounted per node via `key={selected.name}`, so this is
+// exactly per-node) rather than derived straight from the prop each
+// render: that lets a duplicate key be shown mid-edit without immediately
+// asking the parent to Object.fromEntries() it away, which is how a typo'd
+// key used to silently erase whichever row lost the collision.
 function EnvRows({ env, onChange }) {
-  const entries = Object.entries(env)
+  const [rows, setRows] = useState(() => Object.entries(env))
 
-  const setEntries = (next) => onChange(Object.fromEntries(next))
+  const duplicateKeys = new Set(rows.map(([k]) => k).filter((k, i, arr) => k !== '' && arr.indexOf(k) !== i))
+
+  const commit = (next) => {
+    setRows(next)
+    const keys = next.map(([k]) => k)
+    if (new Set(keys).size === keys.length) onChange(Object.fromEntries(next))
+  }
 
   return (
     <div className="edit-field">
       <label>Env</label>
-      {entries.map(([k, v], i) => (
-        <div className="env-row" key={i}>
-          <input
-            value={k}
-            placeholder="KEY"
-            onChange={(e) => {
-              const next = [...entries]
-              next[i] = [e.target.value, v]
-              setEntries(next)
-            }}
-          />
-          <input
-            value={v}
-            placeholder="value"
-            onChange={(e) => {
-              const next = [...entries]
-              next[i] = [k, e.target.value]
-              setEntries(next)
-            }}
-          />
-          <button type="button" onClick={() => setEntries(entries.filter((_, j) => j !== i))} aria-label="remove">
-            ×
-          </button>
+      {rows.map(([k, v], i) => (
+        <div key={i}>
+          <div className="env-row">
+            <input
+              value={k}
+              placeholder="KEY"
+              onChange={(e) => {
+                const next = [...rows]
+                next[i] = [e.target.value, v]
+                commit(next)
+              }}
+            />
+            <input
+              value={v}
+              placeholder="value"
+              onChange={(e) => {
+                const next = [...rows]
+                next[i] = [k, e.target.value]
+                commit(next)
+              }}
+            />
+            <button type="button" onClick={() => commit(rows.filter((_, j) => j !== i))} aria-label="remove">
+              ×
+            </button>
+          </div>
+          {duplicateKeys.has(k) && <p className="edit-field__error">duplicate key "{k}" — only one will be kept</p>}
         </div>
       ))}
-      <button type="button" onClick={() => setEntries([...entries, ['', '']])}>
+      <button type="button" onClick={() => commit([...rows, ['', '']])}>
         + Add env var
       </button>
     </div>
