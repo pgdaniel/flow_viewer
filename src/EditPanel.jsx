@@ -1,15 +1,27 @@
 import { useState } from 'react'
+import { isValidToken } from './graphModel.js'
 
 // A chip-style list editor for a node's publishes/subscribes: existing
 // topics render as removable pills, an input + Enter (or the suggestion
 // datalist) adds a new one.
 function TopicChips({ label, topics, suggestions, onAdd, onRemove }) {
   const [draft, setDraft] = useState('')
+  const [error, setError] = useState(null)
   const listId = `topics-${label}`
 
   const commit = () => {
     const topic = draft.trim()
-    if (topic && !topics.includes(topic)) onAdd(topic)
+    if (!topic) return
+    if (topics.includes(topic)) {
+      setDraft('')
+      return
+    }
+    if (!isValidToken(topic)) {
+      setError(`"${topic}" can only contain letters, numbers, "_", ".", "-"`)
+      return
+    }
+    setError(null)
+    onAdd(topic)
     setDraft('')
   }
 
@@ -31,7 +43,10 @@ function TopicChips({ label, topics, suggestions, onAdd, onRemove }) {
           list={listId}
           value={draft}
           placeholder="add a topic…"
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            if (error) setError(null)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -48,6 +63,7 @@ function TopicChips({ label, topics, suggestions, onAdd, onRemove }) {
           Add
         </button>
       </div>
+      {error && <p className="edit-field__error">{error}</p>}
     </div>
   )
 }
@@ -130,6 +146,10 @@ export function EditPanel({ node, siblingNames, allTopics, onChange, onDelete, o
       setRenameError(`a node named "${trimmed}" already exists`)
       return
     }
+    if (!isValidToken(trimmed)) {
+      setRenameError(`name can only contain letters, numbers, "_", ".", "-"`)
+      return
+    }
     setRenameError(null)
     onChange({ ...node, name: trimmed })
   }
@@ -157,6 +177,7 @@ export function EditPanel({ node, siblingNames, allTopics, onChange, onDelete, o
       <div className="edit-field">
         <label>Command</label>
         <input value={node.cmd} onChange={(e) => onChange({ ...node, cmd: e.target.value })} placeholder="ruby nodes/foo.rb" />
+        {!node.cmd.trim() && <p className="edit-field__error">command is required — this node won't launch without one</p>}
       </div>
 
       <TopicChips

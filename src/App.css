@@ -437,6 +437,12 @@
   margin-bottom: 12px;
 }
 
+.modal__error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+
 .modal__existing {
   display: flex;
   flex-wrap: wrap;

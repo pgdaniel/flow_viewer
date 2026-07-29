@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isValidToken } from './graphModel.js'
 
 // Shown when the user drags a wire between two nodes. Edges in this
 // system aren't literal point-to-point connections — they're *derived*
@@ -8,10 +9,11 @@ import { useState } from 'react'
 // type a new one.
 export function WireModal({ sourceName, targetName, sourcePublishes, onConfirm, onCancel }) {
   const [topic, setTopic] = useState(sourcePublishes[0] ?? '')
+  const trimmed = topic.trim()
+  const invalid = trimmed !== '' && !isValidToken(trimmed)
 
   const confirm = () => {
-    const trimmed = topic.trim()
-    if (trimmed) onConfirm(trimmed)
+    if (trimmed && !invalid) onConfirm(trimmed)
   }
 
   return (
@@ -47,12 +49,13 @@ export function WireModal({ sourceName, targetName, sourcePublishes, onConfirm, 
           placeholder="topic name"
           onKeyDown={(e) => e.key === 'Enter' && confirm()}
         />
+        {invalid && <p className="modal__error">topic can only contain letters, numbers, "_", ".", "-"</p>}
 
         <div className="modal__actions">
           <button type="button" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="modal__confirm" onClick={confirm} disabled={!topic.trim()}>
+          <button type="button" className="modal__confirm" onClick={confirm} disabled={!trimmed || invalid}>
             Wire it
           </button>
         </div>

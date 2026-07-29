@@ -6,7 +6,7 @@ import { layoutGraph, topicColor } from './layout.js'
 import { ModuleNode, UnresolvedNode } from './ModuleNode.jsx'
 import { EditPanel } from './EditPanel.jsx'
 import { WireModal } from './WireModal.jsx'
-import { deriveGraph, allTopics, toYamlText, blankNode } from './graphModel.js'
+import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow } from './graphModel.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 
@@ -194,7 +194,15 @@ export default function App() {
     const name = prompt('New node name (lower_snake_case, matches its NODE_NAME):')
     if (!name) return
     const trimmed = name.trim()
-    if (!trimmed || flowNodes.some((n) => n.name === trimmed)) return
+    if (!trimmed) return
+    if (flowNodes.some((n) => n.name === trimmed)) {
+      alert(`A node named "${trimmed}" already exists.`)
+      return
+    }
+    if (!isValidToken(trimmed)) {
+      alert('Node names can only contain letters, numbers, "_", ".", "-".')
+      return
+    }
     setFlowNodes((prev) => [...prev, blankNode(trimmed)])
     setSelectedName(trimmed)
   }, [flowNodes])
@@ -243,6 +251,12 @@ export default function App() {
   )
 
   const save = useCallback(async () => {
+    const issues = validateFlow(flowNodes)
+    if (issues.length > 0) {
+      setSaveStatus(`Can't save — ${issues[0].message}${issues.length > 1 ? ` (+${issues.length - 1} more)` : ''}`)
+      setTimeout(() => setSaveStatus(null), 8000)
+      return
+    }
     setSaveStatus('Saving…')
     try {
       const res = await fetch(`${EDIT_SERVER_URL}/api/flow`, {

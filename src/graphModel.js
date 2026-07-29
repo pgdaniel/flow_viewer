@@ -91,6 +91,54 @@ export function toYamlText(nodes) {
   return lines.join('\n').replace(/\n+$/, '\n')
 }
 
+/// Node names and topic names both land unquoted in toYamlText's output —
+/// as a `  name:` map key or inside a `[a, b, c]` flow-list — and none of
+/// the hand-rolled parsers escape commas/brackets/colons there (only env
+/// values get quoteIfNeeded's treatment). Restricting both to this safe
+/// charset keeps every round-trip through save/sync well-defined.
+const SAFE_TOKEN = /^[A-Za-z0-9_.-]+$/
+
+export function isValidToken(s) {
+  return typeof s === 'string' && SAFE_TOKEN.test(s)
+}
+
+/// Hard backstop run right before a save: catches anything that slipped
+/// past the inline UI checks (or arrived some other way, e.g. a pasted/
+/// scripted edit) so a corrupt flow.yml can never actually be written.
+/// Returns an array of { nodeName, field, message } issues, empty if the
+/// flow is clean.
+export function validateFlow(nodes) {
+  const issues = []
+  const seenNames = new Set()
+
+  for (const node of nodes) {
+    const label = node.name || '(unnamed node)'
+
+    if (!node.name || !node.name.trim()) {
+      issues.push({ nodeName: label, field: 'name', message: `${label}: name is required` })
+    } else if (!isValidToken(node.name)) {
+      issues.push({ nodeName: label, field: 'name', message: `${label}: name has invalid characters` })
+    } else if (seenNames.has(node.name)) {
+      issues.push({ nodeName: label, field: 'name', message: `${label}: duplicate node name` })
+    }
+    seenNames.add(node.name)
+
+    if (!node.cmd || !node.cmd.trim()) {
+      issues.push({ nodeName: label, field: 'cmd', message: `${label}: command is required` })
+    }
+
+    for (const field of ['publishes', 'subscribes']) {
+      for (const topic of node[field]) {
+        if (!isValidToken(topic)) {
+          issues.push({ nodeName: label, field, message: `${label}: "${topic}" is not a valid topic name` })
+        }
+      }
+    }
+  }
+
+  return issues
+}
+
 /// A fresh, empty node for the "Add Node" toolbar action.
 export function blankNode(name) {
   return { name, cmd: '', publishes: [], subscribes: [], env: {} }
