@@ -6,6 +6,8 @@ import { layoutGraph, topicColor } from './layout.js'
 import { ModuleNode, UnresolvedNode } from './ModuleNode.jsx'
 import { EditPanel } from './EditPanel.jsx'
 import { WireModal } from './WireModal.jsx'
+import { ConfirmModal } from './ConfirmModal.jsx'
+import { PromptModal } from './PromptModal.jsx'
 import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow, isValidFlowJson } from './graphModel.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
@@ -38,6 +40,8 @@ export default function App() {
   const [hoveredEdgeId, setHoveredEdgeId] = useState(null)
   const [pendingConnection, setPendingConnection] = useState(null)
   const [saveStatus, setSaveStatus] = useState(null)
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [addNodeOpen, setAddNodeOpen] = useState(false)
 
   const positionsRef = useRef(loadCachedPositions())
   const [rfNodes, setRfNodes, onRfNodesChange] = useNodesState([])
@@ -186,29 +190,35 @@ export default function App() {
   }, [selectedName])
 
   const deleteNode = useCallback((name) => {
-    if (!confirm(`Delete node "${name}"? This removes it from the flow entirely.`)) return
-    setFlowNodes((prev) => prev.filter((n) => n.name !== name))
-    delete positionsRef.current[name]
-    saveCachedPositions(positionsRef.current)
-    setSelectedName(null)
+    setConfirmAction({
+      message: `Delete node "${name}"? This removes it from the flow entirely.`,
+      confirmLabel: 'Delete',
+      onConfirm: () => {
+        setFlowNodes((prev) => prev.filter((n) => n.name !== name))
+        delete positionsRef.current[name]
+        saveCachedPositions(positionsRef.current)
+        setSelectedName(null)
+        setConfirmAction(null)
+      },
+    })
   }, [])
 
-  const addNode = useCallback(() => {
-    const name = prompt('New node name (lower_snake_case, matches its NODE_NAME):')
-    if (!name) return
-    const trimmed = name.trim()
-    if (!trimmed) return
-    if (flowNodes.some((n) => n.name === trimmed)) {
-      alert(`A node named "${trimmed}" already exists.`)
-      return
-    }
-    if (!isValidToken(trimmed)) {
-      alert('Node names can only contain letters, numbers, "_", ".", "-".')
-      return
-    }
+  const addNode = useCallback(() => setAddNodeOpen(true), [])
+
+  const validateNewNodeName = useCallback(
+    (trimmed) => {
+      if (flowNodes.some((n) => n.name === trimmed)) return `a node named "${trimmed}" already exists`
+      if (!isValidToken(trimmed)) return 'name can only contain letters, numbers, "_", ".", "-"'
+      return null
+    },
+    [flowNodes],
+  )
+
+  const confirmAddNode = useCallback((trimmed) => {
     setFlowNodes((prev) => [...prev, blankNode(trimmed)])
     setSelectedName(trimmed)
-  }, [flowNodes])
+    setAddNodeOpen(false)
+  }, [])
 
   const resetLayout = useCallback(() => {
     positionsRef.current = {}
@@ -245,10 +255,16 @@ export default function App() {
     (_event, edge) => {
       if (!editMode || edge.data.unresolved) return
       const { topic } = edge.data
-      if (!confirm(`Remove "${edge.target}"'s subscription to "${topic}"?\n(This affects every publisher of that topic, since subscriptions are topic-based, not per-wire.)`)) return
-      setFlowNodes((prev) =>
-        prev.map((n) => (n.name === edge.target ? { ...n, subscribes: n.subscribes.filter((t) => t !== topic) } : n)),
-      )
+      setConfirmAction({
+        message: `Remove "${edge.target}"'s subscription to "${topic}"? This affects every publisher of that topic, since subscriptions are topic-based, not per-wire.`,
+        confirmLabel: 'Remove',
+        onConfirm: () => {
+          setFlowNodes((prev) =>
+            prev.map((n) => (n.name === edge.target ? { ...n, subscribes: n.subscribes.filter((t) => t !== topic) } : n)),
+          )
+          setConfirmAction(null)
+        },
+      })
     },
     [editMode],
   )
@@ -421,6 +437,27 @@ export default function App() {
             sourcePublishes={flowNodes.find((n) => n.name === pendingConnection.source)?.publishes ?? []}
             onConfirm={confirmWire}
             onCancel={() => setPendingConnection(null)}
+          />
+        )}
+
+        {confirmAction && (
+          <ConfirmModal
+            message={confirmAction.message}
+            confirmLabel={confirmAction.confirmLabel}
+            onConfirm={confirmAction.onConfirm}
+            onCancel={() => setConfirmAction(null)}
+          />
+        )}
+
+        {addNodeOpen && (
+          <PromptModal
+            title="Add Node"
+            label="New node name (lower_snake_case, matches its NODE_NAME):"
+            placeholder="node_name"
+            confirmLabel="Add"
+            validate={validateNewNodeName}
+            onConfirm={confirmAddNode}
+            onCancel={() => setAddNodeOpen(false)}
           />
         )}
       </div>
