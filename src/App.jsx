@@ -20,7 +20,23 @@ const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 // collide on a single global cache key.
 const flowSource = new URLSearchParams(window.location.search).get('flow') ?? '/flow.json'
 const POSITIONS_KEY = `zmq-viewer:positions:${flowSource}`
-const EDIT_SERVER_URL = 'http://localhost:4568'
+
+const EDIT_SERVER_STORAGE_KEY = 'zmq-viewer:editServerUrl'
+const DEFAULT_EDIT_SERVER_URL = 'http://localhost:4568'
+
+// ?editServer= (explicit, shareable via URL) beats a sticky localStorage
+// setting beats the default — matches flow-edit-server.js's own `node
+// server/flow-edit-server.js flow.yml [port]` CLI arg, which the client
+// previously had no way to discover/target at all.
+function resolveEditServerUrl() {
+  const fromQuery = new URLSearchParams(window.location.search).get('editServer')
+  if (fromQuery) return fromQuery
+  try {
+    return localStorage.getItem(EDIT_SERVER_STORAGE_KEY) || DEFAULT_EDIT_SERVER_URL
+  } catch {
+    return DEFAULT_EDIT_SERVER_URL
+  }
+}
 
 function loadCachedPositions() {
   try {
@@ -57,6 +73,8 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState(null)
   const [confirmAction, setConfirmAction] = useState(null)
   const [addNodeOpen, setAddNodeOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [editServerUrl, setEditServerUrl] = useState(resolveEditServerUrl)
   // The last flowNodes reference known to be written to flow.yml (set on
   // load and after a successful save-to-disk — NOT after the clipboard
   // fallback, since that hasn't actually persisted anything). Reference
@@ -330,7 +348,7 @@ export default function App() {
     }
     setSaveStatus('Saving…')
     try {
-      const res = await fetch(`${EDIT_SERVER_URL}/api/flow`, {
+      const res = await fetch(`${editServerUrl}/api/flow`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodes: flowNodes }),
@@ -349,7 +367,18 @@ export default function App() {
       }
     }
     setTimeout(() => setSaveStatus(null), 5000)
-  }, [flowNodes])
+  }, [flowNodes, editServerUrl])
+
+  const confirmSettings = useCallback((value) => {
+    setEditServerUrl(value)
+    try {
+      localStorage.setItem(EDIT_SERVER_STORAGE_KEY, value)
+    } catch {
+      // localStorage unavailable — the value still applies for this
+      // session, it just won't be sticky across reloads.
+    }
+    setSettingsOpen(false)
+  }, [])
 
   if (error) return <div className="status status--error">{error}</div>
   if (!flowNodes) return <div className="status">Loading flow.yml…</div>
@@ -380,6 +409,14 @@ export default function App() {
           )}
           <button className={`app__edit-toggle${editMode ? ' active' : ''}`} onClick={() => setEditMode((v) => !v)}>
             {editMode ? 'Done Editing' : 'Edit'}
+          </button>
+          <button
+            className="app__settings"
+            onClick={() => setSettingsOpen(true)}
+            title={`Edit server: ${editServerUrl}`}
+            aria-label="Settings"
+          >
+            ⚙
           </button>
         </div>
       </header>
@@ -518,6 +555,26 @@ export default function App() {
             validate={validateNewNodeName}
             onConfirm={confirmAddNode}
             onCancel={() => setAddNodeOpen(false)}
+          />
+        )}
+
+        {settingsOpen && (
+          <PromptModal
+            title="Settings"
+            label="Edit server URL — where 'Save flow.yml' POSTs to (matches the port server/flow-edit-server.js is running on):"
+            placeholder={DEFAULT_EDIT_SERVER_URL}
+            initialValue={editServerUrl}
+            confirmLabel="Save"
+            validate={(value) => {
+              try {
+                new URL(value)
+                return null
+              } catch {
+                return 'must be a full URL, e.g. http://localhost:4568'
+              }
+            }}
+            onConfirm={confirmSettings}
+            onCancel={() => setSettingsOpen(false)}
           />
         )}
       </div>

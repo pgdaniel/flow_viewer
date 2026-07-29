@@ -49,6 +49,12 @@
   color: var(--accent);
 }
 
+.app__settings {
+  padding: 6px 10px !important;
+  font-size: 15px !important;
+  line-height: 1;
+}
+
 .app__save {
   background: var(--accent);
   border-color: var(--accent);
