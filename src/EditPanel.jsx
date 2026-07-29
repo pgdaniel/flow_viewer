@@ -96,13 +96,27 @@ function EnvRows({ env, onChange }) {
 // publishes/subscribes chip editors, env key/value rows, rename, and
 // delete. `node` is the current logical node data (not a React Flow
 // object); `onChange` receives the fully-updated node.
-export function EditPanel({ node, allTopics, onChange, onDelete, onClose }) {
+export function EditPanel({ node, siblingNames, allTopics, onChange, onDelete, onClose }) {
   const [name, setName] = useState(node.name)
+  const [renameError, setRenameError] = useState(null)
 
   const commitRename = () => {
     const trimmed = name.trim()
-    if (trimmed && trimmed !== node.name) onChange({ ...node, name: trimmed })
-    else setName(node.name)
+    if (!trimmed) {
+      setName(node.name)
+      setRenameError(null)
+      return
+    }
+    if (trimmed === node.name) {
+      setRenameError(null)
+      return
+    }
+    if (siblingNames.includes(trimmed)) {
+      setRenameError(`a node named "${trimmed}" already exists`)
+      return
+    }
+    setRenameError(null)
+    onChange({ ...node, name: trimmed })
   }
 
   return (
@@ -115,10 +129,14 @@ export function EditPanel({ node, allTopics, onChange, onDelete, onClose }) {
         <label>Name</label>
         <input
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value)
+            if (renameError) setRenameError(null)
+          }}
           onBlur={commitRename}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         />
+        {renameError && <p className="edit-field__error">{renameError}</p>}
       </div>
 
       <div className="edit-field">

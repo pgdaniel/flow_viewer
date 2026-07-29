@@ -344,6 +344,7 @@ export default function App() {
           <EditPanel
             key={selected.name}
             node={selected}
+            siblingNames={flowNodes.filter((n) => n.name !== selected.name).map((n) => n.name)}
             allTopics={topics}
             onChange={updateNode}
             onDelete={deleteNode}
