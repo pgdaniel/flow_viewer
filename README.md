@@ -33,7 +33,12 @@ npm run dev
 ```
 
 Rerun `npm run sync -- ...` any time flow.yml changes on disk and refresh
-the page. `npm run sync` reuses
+the page, or use `--watch` to regenerate automatically (Vite reloads the
+page when `public/flow.json` changes):
+
+```bash
+npm run sync -- --watch /path/to/some/flow.yml
+``` `npm run sync` reuses
 [node_zmq_framework](https://github.com/pgdaniel/node_zmq_framework)'s
 `Flow` module rather than shelling out to a language-specific `flowctl`,
 so clone that as a sibling of this repo first:
@@ -72,6 +77,12 @@ YAML to your clipboard instead, so you can paste it in by hand. Like
 `sync`, the edit server reuses node_zmq_framework's `Flow` module (its
 `toYamlText()` is what makes writing the manifest back out possible) —
 same sibling-clone requirement as above.
+
+**Tip**: with the edit server running, you can skip `npm run sync` entirely
+and point the viewer directly at it: open
+`http://localhost:5173/?flow=http://localhost:4568/api/flow` (or whatever
+port your edit server is on). The viewer fetches the graph over HTTP
+instead of from `public/flow.json`.
 
 The YAML this produces round-trips through all five ports' parsers —
 verified by writing an edited flow.yml with this tool and confirming
