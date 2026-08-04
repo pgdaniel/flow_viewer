@@ -106,6 +106,7 @@ export default function App() {
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editServerUrl, setEditServerUrl] = useState(resolveEditServerUrl)
+  const [discoveredFlows, setDiscoveredFlows] = useState([])
   // The last flowNodes reference known to be written to flow.yml (set on
   // load and after a successful save-to-disk — NOT after the clipboard
   // fallback, since that hasn't actually persisted anything). Reference
@@ -441,7 +442,13 @@ export default function App() {
     }
     setSaveStatus('Saving…')
     try {
-      const res = await fetch(`${editServerUrl}/api/flow`, {
+      // If viewing a discovered flow via the server, save back to that path
+      let saveUrl = `${editServerUrl}/api/flow`
+      if (flowSource.startsWith(`${editServerUrl}/api/flow?path=`)) {
+        const pathParam = flowSource.split('?path=')[1]
+        if (pathParam) saveUrl = `${editServerUrl}/api/flow?path=${pathParam}`
+      }
+      const res = await fetch(saveUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodes: flowNodes }),
@@ -472,6 +479,15 @@ export default function App() {
     }
     setSettingsOpen(false)
   }, [])
+
+  // Fetch discovered flows when Settings opens
+  useEffect(() => {
+    if (!settingsOpen) return
+    fetch(`${editServerUrl}/api/flows`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((flows) => setDiscoveredFlows(Array.isArray(flows) ? flows : []))
+      .catch(() => setDiscoveredFlows([]))
+  }, [settingsOpen, editServerUrl])
 
   if (error) {
     return (
@@ -700,6 +716,22 @@ export default function App() {
             onConfirm={confirmSettings}
             onCancel={() => setSettingsOpen(false)}
           >
+            {discoveredFlows.length > 0 && (
+              <div className="modal__recent">
+                <p className="modal__hint">Discovered flows:</p>
+                <ul>
+                  {discoveredFlows.map((f) => (
+                    <li key={f.path}>
+                      <a
+                        href={`${window.location.pathname}?flow=${encodeURIComponent(`${editServerUrl}/api/flow?path=${encodeURIComponent(f.path)}`)}`}
+                      >
+                        {f.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {recentSources.length > 0 && (
               <div className="modal__recent">
                 <p className="modal__hint">Switch to a recent flow:</p>
