@@ -316,19 +316,26 @@ export default function App() {
 
   // Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z for undo/redo, skipped while typing in a
   // field (so it doesn't fight native input undo) and only while editing.
+  // Also Delete/Backspace to delete the selected node.
   useEffect(() => {
     if (!editMode) return
     const handler = (e) => {
       const tag = document.activeElement?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return
-      e.preventDefault()
-      if (e.shiftKey) redo()
-      else undo()
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) redo()
+        else undo()
+        return
+      }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedName) {
+        e.preventDefault()
+        deleteNode(selectedName)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [editMode, undo, redo])
+  }, [editMode, undo, redo, selectedName, deleteNode])
 
   const displayEdges = useMemo(
     () => rfEdges.map((e) => (e.id === hoveredEdgeId ? { ...e, label: e.data.topic } : e)),
