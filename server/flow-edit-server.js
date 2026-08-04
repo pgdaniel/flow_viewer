@@ -16,7 +16,7 @@
 // filesystem and never runs as part of `npm install`/`npm run dev`/
 // `npm run build`.
 import { createServer } from 'node:http'
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
@@ -45,6 +45,44 @@ if (!process.argv[2]) {
 const flowPath = path.resolve(process.argv[2])
 const port = Number(process.argv[3] ?? 4568)
 
+// Scans the parent directory of this repo for flow.yml files in sibling
+// repos (e.g. ../go_zmq_framework/flow.yml, ../go_zmq_framework/examples/*/flow.yml).
+// Returns an array of { path, label } objects. Skips node_modules, dot-dirs.
+function discoverFlows() {
+  const root = path.resolve(here, '../..')
+  const results = []
+  const skip = new Set(['node_modules', '.git'])
+
+  function scanDir(dir, depth) {
+    if (depth > 2) return
+    let entries
+    try {
+      entries = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of entries) {
+      if (skip.has(name) || name.startsWith('.')) continue
+      const full = path.join(dir, name)
+      let stat
+      try {
+        stat = statSync(full)
+      } catch {
+        continue
+      }
+      if (stat.isDirectory()) {
+        scanDir(full, depth + 1)
+      } else if (name === 'flow.yml') {
+        const rel = path.relative(root, full)
+        results.push({ path: full, label: rel })
+      }
+    }
+  }
+
+  scanDir(root, 0)
+  return results.sort((a, b) => a.label.localeCompare(b.label))
+}
+
 function withCors(res) {
   // Bound to 127.0.0.1 and only ever touches the local flow.yml, so an
   // open CORS policy is fine here — this is a local dev tool, not a
@@ -69,9 +107,30 @@ const server = createServer(async (req, res) => {
     return
   }
 
-  if (req.method === 'GET' && req.url === '/api/flow') {
+  if (req.method === 'GET' && req.url === '/api/flows') {
+    const flows = discoverFlows()
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(flows))
+    return
+  }
+
+  if (req.method === 'GET' && req.url.startsWith('/api/flow')) {
+    const url = new URL(req.url, `http://${req.headers.host}`)
+    const requestedPath = url.searchParams.get('path')
+    const targetPath = requestedPath ? path.resolve(requestedPath) : flowPath
+
+    // Validate that the requested path is in the discovered set
+    if (requestedPath) {
+      const discovered = discoverFlows()
+      if (!discovered.some((f) => f.path === targetPath)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' })
+        res.end('Path not in discovered flows')
+        return
+      }
+    }
+
     try {
-      const flow = Flow.loadFile(flowPath)
+      const flow = Flow.loadFile(targetPath)
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify(flow.graph()))
     } catch (err) {
@@ -81,14 +140,28 @@ const server = createServer(async (req, res) => {
     return
   }
 
-  if (req.method === 'POST' && req.url === '/api/flow') {
+  if (req.method === 'POST' && req.url.startsWith('/api/flow')) {
+    const url = new URL(req.url, `http://${req.headers.host}`)
+    const requestedPath = url.searchParams.get('path')
+    const targetPath = requestedPath ? path.resolve(requestedPath) : flowPath
+
+    // Validate that the requested path is in the discovered set
+    if (requestedPath) {
+      const discovered = discoverFlows()
+      if (!discovered.some((f) => f.path === targetPath)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' })
+        res.end('Path not in discovered flows')
+        return
+      }
+    }
+
     try {
       let body = ''
       for await (const chunk of req) body += chunk
       const { nodes } = JSON.parse(body)
       const flow = new Flow(nodes)
-      writeFileSync(flowPath, flow.toYamlText())
-      console.log(`[flow-edit-server] wrote ${flowPath} (${nodes.length} nodes)`)
+      writeFileSync(targetPath, flow.toYamlText())
+      console.log(`[flow-edit-server] wrote ${targetPath} (${nodes.length} nodes)`)
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify({ ok: true }))
     } catch (err) {
