@@ -567,3 +567,39 @@
 .modal__confirm:disabled {
   opacity: 0.5;
 }
+
+/* Live toggle button */
+.app__live-toggle.active {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: white;
+}
+
+.app__live-toggle.active:hover {
+  background: #15803d;
+  border-color: #15803d;
+}
+
+/* Node liveness indicators */
+.module-node--live {
+  box-shadow: 0 0 0 2px #16a34a;
+}
+
+.module-node--stale {
+  opacity: 0.5;
+}
+
+.module-node__live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #16a34a;
+  margin-left: 6px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

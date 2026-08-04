@@ -11,6 +11,7 @@ import { PromptModal } from './PromptModal.jsx'
 import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow, isValidFlowJson } from './graphModel.js'
 import { useHistoryState } from './useHistoryState.js'
 import { useFlowLoader, mapGraphToNodes } from './useFlowLoader.js'
+import { useLiveTraffic } from './useLiveTraffic.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 
@@ -24,6 +25,18 @@ const POSITIONS_KEY = `zmq-viewer:positions:${flowSource}`
 
 const EDIT_SERVER_STORAGE_KEY = 'zmq-viewer:editServerUrl'
 const DEFAULT_EDIT_SERVER_URL = 'http://localhost:4568'
+
+const LIVE_SERVER_STORAGE_KEY = 'zmq-viewer:liveServerUrl'
+
+function resolveLiveServerUrl() {
+  const fromQuery = new URLSearchParams(window.location.search).get('live')
+  if (fromQuery) return fromQuery
+  try {
+    return localStorage.getItem(LIVE_SERVER_STORAGE_KEY) || ''
+  } catch {
+    return ''
+  }
+}
 
 // ?editServer= (explicit, shareable via URL) beats a sticky localStorage
 // setting beats the default — matches flow-edit-server.js's own `node
@@ -106,6 +119,9 @@ export default function App() {
   const [addNodeOpen, setAddNodeOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editServerUrl, setEditServerUrl] = useState(resolveEditServerUrl)
+  const [liveServerUrl, setLiveServerUrl] = useState(resolveLiveServerUrl)
+  const [liveEnabled, setLiveEnabled] = useState(false)
+  const { edgeFlashes, nodeLiveness, latestPayloads, connected: liveConnected } = useLiveTraffic(liveServerUrl, liveEnabled)
   const [discoveredFlows, setDiscoveredFlows] = useState([])
   // The last flowNodes reference known to be written to flow.yml (set on
   // load and after a successful save-to-disk — NOT after the clipboard
@@ -259,14 +275,18 @@ export default function App() {
       saveCachedPositions(cache)
     }
 
-    const moduleNodes = liveGraph.nodes.map((n) => ({
-      id: n.name,
-      type: 'module',
-      data: n,
-      position: cache[n.name],
-      width: 220,
-      height: 90,
-    }))
+    const moduleNodes = liveGraph.nodes.map((n) => {
+      const lastHeartbeat = nodeLiveness.get(n.name)
+      const isLive = liveEnabled && lastHeartbeat && Date.now() - lastHeartbeat < 15000
+      return {
+        id: n.name,
+        type: 'module',
+        data: { ...n, liveness: liveEnabled ? (isLive ? 'live' : 'stale') : null },
+        position: cache[n.name],
+        width: 220,
+        height: 90,
+      }
+    })
     const unresolvedNodes = liveGraph.unresolved.map((u) => ({
       id: `unresolved:${u.topic}`,
       type: 'unresolved',
@@ -338,8 +358,18 @@ export default function App() {
   }, [editMode, undo, redo, selectedName, deleteNode])
 
   const displayEdges = useMemo(
-    () => rfEdges.map((e) => (e.id === hoveredEdgeId ? { ...e, label: e.data.topic } : e)),
-    [rfEdges, hoveredEdgeId],
+    () =>
+      rfEdges.map((e) => {
+        const isHovered = e.id === hoveredEdgeId
+        const isFlashing = liveEnabled && edgeFlashes.has(`topic:${e.data.topic}`)
+        const updates = {}
+        if (isHovered) updates.label = e.data.topic
+        if (isFlashing) {
+          updates.style = { ...e.style, strokeWidth: 4, filter: 'drop-shadow(0 0 4px currentColor)' }
+        }
+        return Object.keys(updates).length > 0 ? { ...e, ...updates } : e
+      }),
+    [rfEdges, hoveredEdgeId, liveEnabled, edgeFlashes],
   )
 
   const legend = useMemo(() => {
@@ -554,6 +584,14 @@ export default function App() {
           <button onClick={reloadFlow} title="Reload from source">
             Reload
           </button>
+          <button
+            className={`app__live-toggle${liveEnabled ? ' active' : ''}`}
+            onClick={() => setLiveEnabled((v) => !v)}
+            disabled={!liveServerUrl}
+            title={liveServerUrl ? (liveEnabled ? 'Disconnect live traffic' : 'Connect live traffic') : 'Set live server URL in Settings'}
+          >
+            {liveEnabled ? (liveConnected ? '● Live' : '○ Connecting…') : 'Live'}
+          </button>
           <button className={`app__edit-toggle${editMode ? ' active' : ''}`} onClick={() => setEditMode((v) => !v)}>
             {editMode ? 'Done Editing' : 'Edit'}
           </button>
@@ -671,6 +709,35 @@ export default function App() {
                 </ul>
               </>
             )}
+
+            {liveEnabled && (
+              <>
+                <h3>Latest payloads</h3>
+                {[...selected.publishes, ...selected.subscribes].filter((t, i, arr) => arr.indexOf(t) === i).length > 0 ? (
+                  <ul>
+                    {[...selected.publishes, ...selected.subscribes]
+                      .filter((t, i, arr) => arr.indexOf(t) === i)
+                      .map((topic) => {
+                        const payload = latestPayloads.get(topic)
+                        return (
+                          <li key={topic}>
+                            <strong>{topic}:</strong>{' '}
+                            {payload ? (
+                              <code style={{ fontSize: '11px', wordBreak: 'break-all' }}>
+                                {JSON.stringify(payload)}
+                              </code>
+                            ) : (
+                              <span className="details__empty">no data yet</span>
+                            )}
+                          </li>
+                        )
+                      })}
+                  </ul>
+                ) : (
+                  <p className="details__empty">no topics</p>
+                )}
+              </>
+            )}
           </aside>
         )}
 
@@ -723,6 +790,27 @@ export default function App() {
             onConfirm={confirmSettings}
             onCancel={() => setSettingsOpen(false)}
           >
+            <div className="modal__recent" style={{ marginTop: '16px' }}>
+              <p className="modal__hint">Live server URL — where the Live button connects to (flowctl --live):</p>
+              <input
+                value={liveServerUrl}
+                placeholder="http://localhost:5656"
+                onChange={(e) => setLiveServerUrl(e.target.value)}
+                onBlur={() => {
+                  try {
+                    if (liveServerUrl) {
+                      new URL(liveServerUrl)
+                      localStorage.setItem(LIVE_SERVER_STORAGE_KEY, liveServerUrl)
+                    } else {
+                      localStorage.removeItem(LIVE_SERVER_STORAGE_KEY)
+                    }
+                  } catch {
+                    // Invalid URL, don't save
+                  }
+                }}
+                style={{ width: '100%', marginTop: '8px' }}
+              />
+            </div>
             {discoveredFlows.length > 0 && (
               <div className="modal__recent">
                 <p className="modal__hint">Discovered flows:</p>

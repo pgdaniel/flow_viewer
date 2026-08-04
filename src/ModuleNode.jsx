@@ -5,13 +5,15 @@ import { Handle, Position } from '@xyflow/react'
 // notion of separate named ports, only whole-node publish/subscribe lists.
 export function ModuleNode({ data, selected }) {
   const isWeb = Boolean(data.env && Object.keys(data.env).length > 0)
+  const livenessClass = data.liveness === 'live' ? ' module-node--live' : data.liveness === 'stale' ? ' module-node--stale' : ''
 
   return (
-    <div className={`module-node${selected ? ' selected' : ''}`}>
+    <div className={`module-node${selected ? ' selected' : ''}${livenessClass}`}>
       <Handle type="target" position={Position.Left} />
       <div className="module-node__title">
         {data.name}
         {isWeb && <span className="module-node__badge" title="has env overrides">env</span>}
+        {data.liveness === 'live' && <span className="module-node__live-dot" title="heartbeat received">&nbsp;</span>}
       </div>
       <div className="module-node__cmd">{data.cmd}</div>
       <div className="module-node__topics">
