@@ -31,10 +31,10 @@ export function layoutGraph(graph) {
   g.setDefaultEdgeLabel(() => ({}))
 
   // Width/height are set explicitly (rather than left for React Flow to
-  // measure from the DOM) because this viewer never wires up
-  // onNodesChange — it's read-only — so a measured size would never
-  // make it back onto these node objects; the MiniMap in particular
-  // needs an explicit size to draw anything.
+  // measure from the DOM) because the initial dagre layout runs before
+  // any DOM exists, and the MiniMap needs an explicit size to draw
+  // anything. Edit mode does wire up onNodesChange for drag persistence,
+  // but the first layout and any "Auto Layout" reset still need these.
   const nodes = graph.nodes.map((node) => ({
     id: node.name,
     type: 'module',
