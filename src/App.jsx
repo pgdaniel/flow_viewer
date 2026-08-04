@@ -10,6 +10,7 @@ import { ConfirmModal } from './ConfirmModal.jsx'
 import { PromptModal } from './PromptModal.jsx'
 import { deriveGraph, allTopics, toYamlText, blankNode, isValidToken, validateFlow, isValidFlowJson } from './graphModel.js'
 import { useHistoryState } from './useHistoryState.js'
+import { useFlowLoader, mapGraphToNodes } from './useFlowLoader.js'
 
 const nodeTypes = { module: ModuleNode, unresolved: UnresolvedNode }
 
@@ -55,16 +56,6 @@ function saveCachedPositions(positions) {
   }
 }
 
-function mapGraphToNodes(graph) {
-  return graph.nodes.map((n) => ({
-    name: n.name,
-    cmd: n.cmd,
-    publishes: [...n.publishes],
-    subscribes: [...n.subscribes],
-    env: { ...n.env },
-  }))
-}
-
 // A small "recently opened" list, keyed by the same ?flow= value used to
 // fetch flow.json — lets a user get back to a flow source they had open
 // before, the same way an editor remembers recent projects. Only fetched
@@ -104,6 +95,7 @@ export default function App() {
     canUndo,
     canRedo,
   } = useHistoryState(null)
+  const { load } = useFlowLoader()
   const [error, setError] = useState(null)
   const [editMode, setEditMode] = useState(false)
   const [selectedName, setSelectedName] = useState(null)
@@ -127,16 +119,8 @@ export default function App() {
   const [rfEdges, setRfEdges] = useEdgesState([])
 
   useEffect(() => {
-    fetch(flowSource)
-      .then((res) => {
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-        return res.json()
-      })
-      .then((graph) => {
-        if (!isValidFlowJson(graph)) {
-          throw new Error(`${flowSource} is not shaped like a flow graph (expected { nodes: [...] })`)
-        }
-        const nodes = mapGraphToNodes(graph)
+    load(flowSource)
+      .then((nodes) => {
         replaceWithoutHistory(nodes)
         setCleanCheckpoint(nodes)
         recordRecentFlowSource(flowSource)
@@ -146,10 +130,58 @@ export default function App() {
           `Could not load ${flowSource} (${err.message}). Run "npm run sync" to generate it from flow.yml, or load a file below.`,
         ),
       )
-    // replaceWithoutHistory is a stable useCallback identity; omitted to
-    // keep this a true "run once on mount" effect.
+    // load and replaceWithoutHistory are stable useCallback identities;
+    // omitted to keep this a true "run once on mount" effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Refetch on window focus when clean (no unsaved edits). If dirty, the
+  // user's edits take priority — they can use the Reload button to
+  // explicitly discard and refetch.
+  useEffect(() => {
+    if (!flowNodes) return
+    const onFocus = () => {
+      if (dirty) return
+      load(flowSource)
+        .then((nodes) => {
+          if (JSON.stringify(nodes) === JSON.stringify(flowNodes)) return
+          replaceWithoutHistory(nodes)
+          setCleanCheckpoint(nodes)
+        })
+        .catch(() => {
+          // Silent on focus-refetch failure — the existing data is still
+          // valid, and the user can manually reload if needed.
+        })
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [flowNodes, dirty, load, replaceWithoutHistory])
+
+  const reloadFlow = useCallback(() => {
+    if (dirty) {
+      setConfirmAction({
+        message: 'Discard unsaved changes and reload from source?',
+        confirmLabel: 'Reload',
+        onConfirm: () => {
+          load(flowSource)
+            .then((nodes) => {
+              replaceWithoutHistory(nodes)
+              setCleanCheckpoint(nodes)
+              setError(null)
+            })
+            .catch((err) => setError(`Could not reload (${err.message}).`))
+          setConfirmAction(null)
+        },
+      })
+    } else {
+      load(flowSource)
+        .then((nodes) => {
+          replaceWithoutHistory(nodes)
+          setCleanCheckpoint(nodes)
+        })
+        .catch((err) => setError(`Could not reload (${err.message}).`))
+    }
+  }, [dirty, load, replaceWithoutHistory])
 
   // Fallback for a statically-hosted build with no server-side flow.json
   // and no ?flow= override: let the user hand the app a file directly,
@@ -496,6 +528,9 @@ export default function App() {
               </button>
             </>
           )}
+          <button onClick={reloadFlow} title="Reload from source">
+            Reload
+          </button>
           <button className={`app__edit-toggle${editMode ? ' active' : ''}`} onClick={() => setEditMode((v) => !v)}>
             {editMode ? 'Done Editing' : 'Edit'}
           </button>
