@@ -9,7 +9,9 @@
 // happens to be written for.
 //
 //   npm run sync -- /path/to/some/flow.yml
+//   npm run sync -- --watch /path/to/some/flow.yml
 import { writeFileSync } from 'node:fs'
+import { watch } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
@@ -31,13 +33,38 @@ try {
   process.exit(1)
 }
 
-if (!process.argv[2]) {
-  console.error('Usage: npm run sync -- /path/to/some/flow.yml')
+const args = process.argv.slice(2)
+const watchMode = args.includes('--watch')
+const flowArg = args.find((a) => a !== '--watch')
+
+if (!flowArg) {
+  console.error('Usage: npm run sync -- [--watch] /path/to/some/flow.yml')
   process.exit(1)
 }
 
-const flowPath = path.resolve(process.argv[2])
-const flow = Flow.loadFile(flowPath)
+const flowPath = path.resolve(flowArg)
 const outPath = path.join(here, '../public/flow.json')
-writeFileSync(outPath, JSON.stringify(flow.graph(), null, 2))
-console.log(`[sync] wrote ${outPath} from ${flowPath}`)
+
+function regenerate() {
+  try {
+    const flow = Flow.loadFile(flowPath)
+    writeFileSync(outPath, JSON.stringify(flow.graph(), null, 2))
+    console.log(`[sync] wrote ${outPath} from ${flowPath}`)
+  } catch (err) {
+    console.error(`[sync] ${err.message}`)
+  }
+}
+
+regenerate()
+
+if (watchMode) {
+  const dir = path.dirname(flowPath)
+  const basename = path.basename(flowPath)
+  let debounceTimer = null
+  console.log(`[sync] watching ${flowPath} for changes...`)
+  watch(dir, { persistent: true }, (eventType, filename) => {
+    if (filename !== basename) return
+    if (debounceTimer) clearTimeout(debounceTimer)
+    debounceTimer = setTimeout(regenerate, 100)
+  })
+}
