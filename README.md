@@ -91,6 +91,24 @@ and point the viewer directly at it: open
 port your edit server is on). The viewer fetches the graph over HTTP
 instead of from `public/flow.json`.
 
+### Loading flows from anywhere
+
+The edit server discovers flows in sibling repos by default (scanning
+`../..` from the viewer's location). To change the discovery root:
+
+```bash
+FLOW_DISCOVERY_ROOT=/path/to/scan npm run edit-server -- /path/to/some/flow.yml
+```
+
+You can also load any flow directly via the Settings modal:
+
+1. Click the gear icon (⚙) in the toolbar
+2. Enter a path to a directory containing `flow.yml` or directly to a `flow.yml` file
+3. Click "Load"
+
+The server resolves directories to `flow.yml` automatically. This works
+for any path on your filesystem, not just discovered flows.
+
 The YAML this produces round-trips through all five ports' parsers —
 verified by writing an edited flow.yml with this tool and confirming
 Ruby, Zig, Go, Rust, and Node's own `flowctl --plan` all compute identical

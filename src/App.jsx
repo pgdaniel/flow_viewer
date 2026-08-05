@@ -827,6 +827,25 @@ export default function App() {
                 </ul>
               </div>
             )}
+            <div className="modal__recent">
+              <p className="modal__hint">Load from path (directory or flow.yml file):</p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  const pathInput = e.target.elements.pathInput.value.trim()
+                  if (pathInput) {
+                    window.location.href = `${window.location.pathname}?flow=${encodeURIComponent(`${editServerUrl}/api/flow/resolve?path=${encodeURIComponent(pathInput)}`)}`
+                  }
+                }}
+              >
+                <input
+                  name="pathInput"
+                  placeholder="/path/to/flow.yml or /path/to/directory"
+                  style={{ width: '100%', marginTop: '8px' }}
+                />
+                <button type="submit" style={{ marginTop: '8px' }}>Load</button>
+              </form>
+            </div>
             {recentSources.length > 0 && (
               <div className="modal__recent">
                 <p className="modal__hint">Switch to a recent flow:</p>
