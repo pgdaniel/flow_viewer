@@ -123,6 +123,12 @@ export default function App() {
   const [liveEnabled, setLiveEnabled] = useState(false)
   const { edgeFlashes, nodeLiveness, latestPayloads, connected: liveConnected } = useLiveTraffic(liveServerUrl, liveEnabled)
   const [discoveredFlows, setDiscoveredFlows] = useState([])
+  // Holds a FileSystemDirectoryHandle from showDirectoryPicker — when set,
+  // Save writes flow.yml directly to this folder (no edit-server needed)
+  // and the toolbar shows the folder name.
+  const pickedFolderRef = useRef(null)
+  const [pickedFolderName, setPickedFolderName] = useState(null)
+  const canPickFolder = typeof window.showDirectoryPicker === 'function'
   // The last flowNodes reference known to be written to flow.yml (set on
   // load and after a successful save-to-disk — NOT after the clipboard
   // fallback, since that hasn't actually persisted anything). Reference
@@ -225,6 +231,41 @@ export default function App() {
     },
     [replaceWithoutHistory],
   )
+
+  // Uses the File System Access API to let the user pick a folder, reads
+  // flow.yml from it, sends it to the edit-server for parsing, and loads
+  // the resulting graph. Also stores the folder handle so Save can write
+  // back directly (no server round-trip needed for save).
+  const loadFromFolder = useCallback(async () => {
+    if (!canPickFolder) return
+    try {
+      const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' })
+      const fileHandle = await dirHandle.getFileHandle('flow.yml')
+      const file = await fileHandle.getFile()
+      const text = await file.text()
+
+      const res = await fetch(`${editServerUrl}/api/parse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: text,
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const graph = await res.json()
+      if (!isValidFlowJson(graph)) {
+        throw new Error('server returned an invalid graph shape')
+      }
+      const nodes = mapGraphToNodes(graph)
+      replaceWithoutHistory(nodes)
+      setCleanCheckpoint(nodes)
+      setError(null)
+      pickedFolderRef.current = dirHandle
+      setPickedFolderName(dirHandle.name)
+    } catch (err) {
+      if (err.name === 'AbortError') return // user cancelled the picker
+      setError(`Could not load from folder (${err.message}).`)
+    }
+  }, [canPickFolder, editServerUrl, replaceWithoutHistory])
 
   // Warn before an unsaved edit is silently discarded by a close/refresh.
   useEffect(() => {
@@ -479,6 +520,18 @@ export default function App() {
     }
     setSaveStatus('Saving…')
     try {
+      // If we have a picked folder handle, write directly to it (no server needed)
+      if (pickedFolderRef.current) {
+        const fileHandle = await pickedFolderRef.current.getFileHandle('flow.yml', { create: true })
+        const writable = await fileHandle.createWritable()
+        await writable.write(toYamlText(flowNodes))
+        await writable.close()
+        setSaveStatus('Saved to flow.yml ✓')
+        setCleanCheckpoint(flowNodes)
+        setTimeout(() => setSaveStatus(null), 5000)
+        return
+      }
+
       // If viewing a discovered flow via the server, save back to that path
       let saveUrl = `${editServerUrl}/api/flow`
       if (flowSource.startsWith(`${editServerUrl}/api/flow?path=`)) {
@@ -539,6 +592,11 @@ export default function App() {
               onChange={(e) => e.target.files[0] && loadFromFile(e.target.files[0])}
             />
           </label>
+          {canPickFolder && (
+            <button onClick={loadFromFolder} style={{ marginTop: '8px' }}>
+              📂 Open a folder containing flow.yml
+            </button>
+          )}
           {recentSources.length > 0 && (
             <div className="status__recent">
               <p>Or open a recent flow:</p>
@@ -584,6 +642,11 @@ export default function App() {
           <button onClick={reloadFlow} title="Reload from source">
             Reload
           </button>
+          {canPickFolder && (
+            <button onClick={loadFromFolder} title="Open a folder containing flow.yml">
+              {pickedFolderName ? `📂 ${pickedFolderName}` : '📂 Open folder'}
+            </button>
+          )}
           <button
             className={`app__live-toggle${liveEnabled ? ' active' : ''}`}
             onClick={() => setLiveEnabled((v) => !v)}

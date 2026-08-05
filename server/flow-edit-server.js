@@ -141,6 +141,22 @@ const server = createServer(async (req, res) => {
     return
   }
 
+  // Parse flow.yml text sent from the browser (e.g. from a folder picked
+  // via the File System Access API) and return the graph JSON.
+  if (req.method === 'POST' && req.url === '/api/parse') {
+    try {
+      let body = ''
+      for await (const chunk of req) body += chunk
+      const flow = Flow.parse(body)
+      res.writeHead(200, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify(flow.graph()))
+    } catch (err) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' })
+      res.end(err.message)
+    }
+    return
+  }
+
   // Load flow from any path (user explicitly typed it, so no discovery-set check)
   if (req.method === 'GET' && req.url.startsWith('/api/flow/resolve')) {
     const url = new URL(req.url, `http://${req.headers.host}`)
