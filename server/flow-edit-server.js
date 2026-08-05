@@ -45,16 +45,40 @@ if (!process.argv[2]) {
 const flowPath = path.resolve(process.argv[2])
 const port = Number(process.argv[3] ?? 4568)
 
+// Resolves a path: if it's a directory, appends flow.yml. Returns the
+// resolved path or null if the directory doesn't contain flow.yml.
+function resolveFlowPath(requestedPath) {
+  const resolved = path.resolve(requestedPath)
+  let stat
+  try {
+    stat = statSync(resolved)
+  } catch {
+    return null
+  }
+  if (stat.isDirectory()) {
+    const flowFile = path.join(resolved, 'flow.yml')
+    try {
+      statSync(flowFile)
+      return flowFile
+    } catch {
+      return null
+    }
+  }
+  return resolved
+}
+
 // Scans the parent directory of this repo for flow.yml files in sibling
 // repos (e.g. ../go_zmq_framework/flow.yml, ../go_zmq_framework/examples/*/flow.yml).
-// Returns an array of { path, label } objects. Skips node_modules, dot-dirs.
+// Returns an array of { path, label } objects. The path is the directory
+// containing flow.yml (not the file itself), so the UI shows cleaner labels.
+// Skips node_modules, dot-dirs.
 function discoverFlows() {
   const root = path.resolve(here, '../..')
   const results = []
   const skip = new Set(['node_modules', '.git'])
 
   function scanDir(dir, depth) {
-    if (depth > 2) return
+    if (depth > 3) return
     let entries
     try {
       entries = readdirSync(dir)
@@ -73,8 +97,9 @@ function discoverFlows() {
       if (stat.isDirectory()) {
         scanDir(full, depth + 1)
       } else if (name === 'flow.yml') {
-        const rel = path.relative(root, full)
-        results.push({ path: full, label: rel })
+        const dirPath = path.dirname(full)
+        const rel = path.relative(root, dirPath)
+        results.push({ path: dirPath, label: rel || '.' })
       }
     }
   }
@@ -117,16 +142,25 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && req.url.startsWith('/api/flow')) {
     const url = new URL(req.url, `http://${req.headers.host}`)
     const requestedPath = url.searchParams.get('path')
-    const targetPath = requestedPath ? path.resolve(requestedPath) : flowPath
+    let targetPath
 
-    // Validate that the requested path is in the discovered set
     if (requestedPath) {
+      // Validate that the requested path is in the discovered set
       const discovered = discoverFlows()
-      if (!discovered.some((f) => f.path === targetPath)) {
+      const match = discovered.find((f) => f.path === requestedPath)
+      if (!match) {
         res.writeHead(403, { 'Content-Type': 'text/plain' })
         res.end('Path not in discovered flows')
         return
       }
+      targetPath = resolveFlowPath(requestedPath)
+      if (!targetPath) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('flow.yml not found in directory')
+        return
+      }
+    } else {
+      targetPath = flowPath
     }
 
     try {
@@ -143,16 +177,25 @@ const server = createServer(async (req, res) => {
   if (req.method === 'POST' && req.url.startsWith('/api/flow')) {
     const url = new URL(req.url, `http://${req.headers.host}`)
     const requestedPath = url.searchParams.get('path')
-    const targetPath = requestedPath ? path.resolve(requestedPath) : flowPath
+    let targetPath
 
-    // Validate that the requested path is in the discovered set
     if (requestedPath) {
+      // Validate that the requested path is in the discovered set
       const discovered = discoverFlows()
-      if (!discovered.some((f) => f.path === targetPath)) {
+      const match = discovered.find((f) => f.path === requestedPath)
+      if (!match) {
         res.writeHead(403, { 'Content-Type': 'text/plain' })
         res.end('Path not in discovered flows')
         return
       }
+      targetPath = resolveFlowPath(requestedPath)
+      if (!targetPath) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' })
+        res.end('flow.yml not found in directory')
+        return
+      }
+    } else {
+      targetPath = flowPath
     }
 
     try {

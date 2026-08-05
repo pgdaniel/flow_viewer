@@ -32,6 +32,13 @@ npm run sync -- /path/to/some/flow.yml   # regenerate public/flow.json
 npm run dev
 ```
 
+Both `sync` and `edit-server` accept either a `flow.yml` file path or a
+directory containing one (they auto-resolve to `flow.yml` inside it):
+
+```bash
+npm run sync -- /path/to/some/directory   # finds flow.yml inside
+```
+
 Rerun `npm run sync -- ...` any time flow.yml changes on disk and refresh
 the page, or use `--watch` to regenerate automatically (Vite reloads the
 page when `public/flow.json` changes):

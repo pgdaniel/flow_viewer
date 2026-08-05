@@ -9,8 +9,9 @@
 // happens to be written for.
 //
 //   npm run sync -- /path/to/some/flow.yml
+//   npm run sync -- /path/to/some/directory   # auto-resolves to flow.yml
 //   npm run sync -- --watch /path/to/some/flow.yml
-import { writeFileSync } from 'node:fs'
+import { writeFileSync, statSync } from 'node:fs'
 import { watch } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
@@ -38,11 +39,21 @@ const watchMode = args.includes('--watch')
 const flowArg = args.find((a) => a !== '--watch')
 
 if (!flowArg) {
-  console.error('Usage: npm run sync -- [--watch] /path/to/some/flow.yml')
+  console.error('Usage: npm run sync -- [--watch] /path/to/flow.yml (or directory containing flow.yml)')
   process.exit(1)
 }
 
-const flowPath = path.resolve(flowArg)
+// Resolve path: if it's a directory, append flow.yml
+let flowPath = path.resolve(flowArg)
+try {
+  const stat = statSync(flowPath)
+  if (stat.isDirectory()) {
+    flowPath = path.join(flowPath, 'flow.yml')
+  }
+} catch {
+  // Path doesn't exist, let Flow.loadFile handle the error
+}
+
 const outPath = path.join(here, '../public/flow.json')
 
 function regenerate() {
